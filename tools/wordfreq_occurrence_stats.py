@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Count word matches and compare them with the uniform-byte null model."""
+"""Fast wordfreq occurrence counts vs the uniform-byte null model."""
 from __future__ import annotations
 import argparse
 import hashlib
-import math
 from pathlib import Path
 from wordfreq import iter_wordlist, zipf_frequency
 
@@ -26,9 +25,11 @@ def main() -> None:
     print(f"Language:      {args.lang}")
     print(f"Wordlist:      {args.wordlist}")
 
-    candidates: dict[bytes, tuple[str, float]] = {}
+    # Trie node: byte -> child node, with terminal bytes stored as key 256.
+    root: dict[int, dict] = {}
+    meta: dict[bytes, tuple[str, float]] = {}
     for word in iter_wordlist(args.lang, wordlist=args.wordlist):
-        if len(candidates) >= args.max_words:
+        if len(meta) >= args.max_words:
             break
         if len(word) < args.min_length:
             continue
@@ -36,37 +37,45 @@ def main() -> None:
         if z < args.min_zipf:
             continue
         needle = word.encode("utf-8")
-        candidates.setdefault(needle, (word, z))
+        node = root
+        for b in needle:
+            node = node.setdefault(b, {})
+        node[256] = needle
+        meta[needle] = (word, z)
 
-    counts: dict[bytes, int] = {k: 0 for k in candidates}
-    by_first: dict[int, list[bytes]] = {}
-    for needle in candidates:
-        by_first.setdefault(needle[0], []).append(needle)
+    counts: dict[bytes, int] = {k: 0 for k in meta}
 
-    # Scan once; only inspect candidate lengths beginning at the current byte.
-    max_len = max((len(k) for k in candidates), default=0)
-    for i, first in enumerate(data):
-        for needle in by_first.get(first, ()):
-            L = len(needle)
-            if i + L <= n and data[i:i + L] == needle:
-                counts[needle] += 1
+    # Scan each starting position once. This replaces one full 100 MB search
+    # per word with a shared prefix walk through the trie.
+    for i in range(n):
+        node = root
+        j = i
+        while j < n:
+            child = node.get(data[j])
+            if child is None:
+                break
+            node = child
+            j += 1
+            terminal = node.get(256)
+            if terminal is not None:
+                counts[terminal] += 1
 
     rows = []
     for needle, observed in counts.items():
-        word, z = candidates[needle]
+        word, z = meta[needle]
         L = len(needle)
-        expected = max(0, n - L + 1) / (256 ** L)
+        expected = (n - L + 1) / (256 ** L)
         rows.append((observed, expected, L, z, word))
 
     hits = [r for r in rows if r[0] > 0]
     hits.sort(key=lambda r: (-r[2], -r[0], -r[3], r[4]))
-    print(f"Candidates:     {len(candidates)}")
+    print(f"Candidates:     {len(meta)}")
     print(f"Words with hit: {len(hits)}")
     print("\nword                     bytes observed expected")
     for observed, expected, L, z, word in hits[:args.top]:
         print(f"{word!r:24} {L:5} {observed:8} {expected:.9g}")
 
-    for L in sorted({len(k) for k in candidates}):
+    for L in sorted({len(k) for k in meta}):
         pool = [r for r in rows if r[2] == L]
         observed_words = sum(r[0] > 0 for r in pool)
         expected_hits = sum(r[1] for r in pool)
