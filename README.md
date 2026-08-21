@@ -1,40 +1,57 @@
 # EXNIHILO
 
-> **From nothing.**
+> **Out of nothing.**
 >
-> An experimental study of whether recognizable structure can emerge from raw randomness.
+> Exploring whether recognizable language can appear in completely unguided random character streams.
 
-## The idea
+## Principle
 
-EXNIHILO deliberately gives the generator **no English vocabulary, grammar, language model, training corpus, or predefined words**.
+EXNIHILO deliberately gives the generator **no English vocabulary, grammar, corpus, language model, Markov model, or predefined words**.
 
-The generation pipeline is:
+The generator obtains random bytes from the operating system and maps those bytes to random lowercase characters. Word lengths and sentence lengths are also selected from the same random source.
 
-```text
-entropy → bits → characters → random strings → random sentences
+Python's `os.urandom()` provides random bytes from an OS-specific randomness source and is intended to provide unpredictable bytes suitable for cryptographic use. On Windows, Python documents that it uses `BCryptGenRandom()`. citeturn0search0
+
+The English detector will remain a separate component. It must never influence generation.
+
+## First prototype
+
+Run:
+
+```bash
+python exnihilo.py --sentences 20
 ```
 
-The generator does not know what an English word or sentence is.
+Continuous generation:
 
-A separate analysis layer may inspect generated output after the fact and report whether recognizable English occurs. The analysis layer must never influence generation.
+```bash
+python exnihilo.py
+```
 
-## Goals
+Benchmark for 10 seconds:
 
-- Generate character sequences from raw entropy.
-- Allow lengths from 1 to 35 characters per token.
-- Assemble tokens into random sentences.
-- Record generation counts and throughput.
-- Detect and preserve interesting accidental patterns.
-- Keep generation and analysis completely separated.
+```bash
+python exnihilo.py --benchmark 10
+```
 
 ## Scientific rule
 
-**No feedback.** If the detector finds English, the generator must not be changed because of that result. This keeps the experiment reproducible and avoids silently biasing the output.
+A surprising output is **not** evidence of prediction or anything supernatural by itself. Every notable result must preserve the raw output, generation count, entropy source, program version, and detection method so that its probability can be analyzed.
 
-## Status
+## Roadmap
 
-🚧 Initial experiment — implementation coming next.
+- [x] OS entropy source
+- [x] No-vocabulary character generation
+- [x] 1–35 character random words
+- [x] Random sentence generation
+- [x] Benchmark mode
+- [ ] Raw output logging
+- [ ] Independent English-word detector
+- [ ] Phrase/sentence detector
+- [ ] Statistical significance analysis
+- [ ] Reproducible experiment reports
+- [ ] Optional hardware-RNG experiment
 
-## Name
+## License
 
-**EXNIHILO** comes from the Latin phrase *ex nihilo*, meaning **"out of nothing."**
+MIT
