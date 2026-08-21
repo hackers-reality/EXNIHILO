@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-hoc language detector backed by wordfreq.
+"""Fast post-hoc wordfreq detector.
 
 The generator never imports this module. Linguistic data is used only after a
 raw dataset has been generated and hashed.
@@ -29,18 +29,40 @@ def main() -> None:
     print(f"Language:      {args.lang}")
     print(f"Wordlist:      {args.wordlist}")
 
+    # Build a trie from the candidate words. We then scan the dataset once,
+    # instead of calling bytes.find() once for every dictionary entry.
+    root: dict[int | None, object] = {}
     checked = 0
-    hits = []
+    frequencies: dict[bytes, tuple[str, float]] = {}
+
     for word in iter_wordlist(args.lang, wordlist=args.wordlist):
         if checked >= args.max_words:
             break
-        if len(word) < args.min_length or zipf_frequency(word, args.lang) < args.min_zipf:
+        if len(word) < args.min_length:
             continue
-        checked += 1
+        z = zipf_frequency(word, args.lang)
+        if z < args.min_zipf:
+            continue
         needle = word.encode("utf-8")
-        pos = data.find(needle)
-        if pos >= 0:
-            hits.append((len(needle), zipf_frequency(word, args.lang), word, pos))
+        node = root
+        for b in needle:
+            node = node.setdefault(b, {})
+        node[None] = True
+        frequencies[needle] = (word, z)
+        checked += 1
+
+    hits: list[tuple[int, float, str, int]] = []
+    n = len(data)
+    for i in range(n):
+        node = root
+        j = i
+        while j < n and data[j] in node:
+            node = node[data[j]]  # type: ignore[index]
+            j += 1
+            if None in node:
+                needle = data[i:j]
+                word, z = frequencies[needle]
+                hits.append((len(needle), z, word, i))
 
     hits.sort(key=lambda x: (-x[0], -x[1], x[3]))
     print(f"Patterns checked: {checked}")
