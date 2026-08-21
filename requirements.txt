@@ -1,0 +1,2 @@
+# EXNIHILO has no third-party runtime dependencies.
+# The generator and analysis tools use Python's standard library only.
